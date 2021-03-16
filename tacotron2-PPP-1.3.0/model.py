@@ -1063,7 +1063,7 @@ class Tacotron2(nn.Module):
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
             output_lengths)
     
-    def inference(self, text, speaker_ids, style_input=None, style_mode=None, text_lengths=None):
+    def inference(self, text, speaker_ids, multispeaker_mode, style_input=None, style_mode=None, text_lengths=None):
         embedded_text = self.embedding(text).transpose(1, 2) # [B, embed, sequence]
         encoder_outputs = self.encoder.inference(embedded_text, speaker_ids=speaker_ids, text_lengths=text_lengths) # [B, time, encoder_out]
         
@@ -1093,6 +1093,13 @@ class Tacotron2(nn.Module):
         
         if self.speaker_embedding_dim:
             embedded_speakers = self.speaker_embedding(speaker_ids)[:, None]
+            print(embedded_speakers)
+            if multispeaker_mode == "hybrid_voices":
+              splits = int(embedded_speakers.shape[0] / 2)
+              mix_1, mix_2 = torch.split(embedded_speakers, splits)
+              embedded_speakers = torch.add(mix_1, mix_2)
+              embedded_speakers = torch.div(embedded_speakers, 2)
+              print(embedded_speakers)
             embedded_speakers = embedded_speakers.repeat(1, encoder_outputs.size(1), 1)
             encoder_outputs = torch.cat((encoder_outputs, embedded_speakers), dim=2) # [batch, time, encoder_out]
         
