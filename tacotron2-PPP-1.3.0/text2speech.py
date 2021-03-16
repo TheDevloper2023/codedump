@@ -489,6 +489,8 @@ class T2S:
                         speaker_names.append(speaker_names.pop(0))
                         return first_speaker
                     batch_speaker_names = [shuffle_and_return() for i in range(simultaneous_texts)]
+                elif speaker_mode == "hybrid_voices":
+                    batch_speaker_names = speaker_names * -(-simultaneous_texts//len(speaker_names))
                 else:
                     raise NotImplementedError
                 
@@ -509,6 +511,8 @@ class T2S:
                 waveglow_speaker_ids = [self.wg_sp_id_lookup[int(speaker_id)] for speaker_id in waveglow_speaker_ids]
                 waveglow_speaker_ids = torch.LongTensor(waveglow_speaker_ids).cuda()
                 
+                
+
                 # get style input
                 if style_mode == 'mel':
                     mel = load_mel(audio_path.replace(".npy",".wav")).cuda().half()
@@ -519,10 +523,22 @@ class T2S:
                 elif style_mode == 'zeros':
                     style_input = None
                 elif style_mode == 'torchmoji_hidden':
-                    try:
-                        tokenized, _, _ = self.tm_sentence_tokenizer.tokenize_sentences(text_batch) # input array [B] e.g: ["Test?","2nd Sentence!"]
-                    except:
-                        raise Exception(f"TorchMoji failed to tokenize text:\n{text_batch}")
+                    print(text_batch)
+                    for t in text_batch:
+                        if "|" in t:
+                            text_batch, style_text = t.split("|")
+                            text_batch = [text_batch]
+                            style_text = [style_text]
+                            try:
+                                tokenized, _, _ = self.tm_sentence_tokenizer.tokenize_sentences(style_text) # input array [B] e.g: ["Test?","2nd Sentence!"]
+                            except:
+                                raise Exception(f"TorchMoji failed to tokenize text:\n{text_batch}")
+                            print(style_text)
+                        else:
+                            try:
+                                tokenized, _, _ = self.tm_sentence_tokenizer.tokenize_sentences(text_batch) # input array [B] e.g: ["Test?","2nd Sentence!"]
+                            except:
+                                raise Exception(f"TorchMoji failed to tokenize text:\n{text_batch}")
                     try:
                         embedding = self.tm_torchmoji(tokenized) # returns np array [B, Embed]
                     except Exception as ex:
@@ -573,7 +589,7 @@ class T2S:
                     while np.amin(best_score) < target_score:
                         # run Tacotron
                         if status_updates: print("Running Tacotron2... ", end='')
-                        mel_batch_outputs, mel_batch_outputs_postnet, gate_batch_outputs, alignments_batch = self.tacotron.inference(sequence, tacotron_speaker_ids, style_input=style_input, style_mode=style_mode, text_lengths=text_lengths.repeat_interleave(batch_size_per_text, dim=0))
+                        mel_batch_outputs, mel_batch_outputs_postnet, gate_batch_outputs, alignments_batch = self.tacotron.inference(sequence, tacotron_speaker_ids, speaker_mode, style_input=style_input, style_mode=style_mode, text_lengths=text_lengths.repeat_interleave(batch_size_per_text, dim=0))
                         
                         # metric for html side
                         n_passes+=1 # metric for html
