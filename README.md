@@ -1,4 +1,7 @@
 # CodeDump
-Will be used for the /ppp/! as of now I haven't finished mod to uploaded here!
+Old synthesize scripts for tacotron2 + tm with waveglow or hifigan
 
-**Original repo by 
+> Why bother, can't we abuse other stuff?
+- Good point, but wait and see :)
+
+**Original repo by  RAYTRAC3R or BFDIAnon!**
