@@ -1,7 +1,6 @@
 # CodeDump
-Old synthesize scripts for tacotron2 + tm with waveglow or hifigan
+Old synthesize scripts for tacotron2 + tm with waveglow or hifigan from the Pony Pervestation Project
+This mod supports HIFIGAN and a better emotional contextualizer system.
 
-> Why bother, can't we abuse other stuff?
-- Good point, but wait and see :)
 
 **Original repo by  RAYTRAC3R or BFDIAnon!**
