@@ -9,3 +9,5 @@ This mod supports HiFi-GAN and a better emotional contextualizer system. I also 
 - [ ] Make Colab Script  
 
 **Original repo by RAYTRAC3R or BFDIAnon!**
+
+(pst, Once I'm done with this code, I'll make a guide on installing. but it uses Python 3.7)
