@@ -1,13 +1,11 @@
 # CodeDump
-Old synthesize scripts for tacotron2 + tm with waveglow from the Pony Pervestation Project
-This mod supports HIFIGAN and a better emotional contextualizer system. I also patch bugs from the script.
+Old synthesize scripts for Tacotron2 + TM with WaveGlow from the Pony Pervestation Project  
+This mod supports HiFi-GAN and a better emotional contextualizer system. I also patch bugs from the script.
 
-#TODO LIST
-() Fix Bugs with the original code
-() Add HiFi-Gan support
-() Fix Contextuliser System
-() Make Colab Script
+## ✅ TODO LIST  
+- [x] Fix Bugs with the original code  
+- [ ] Add HiFi-GAN support  
+- [ ] Fix Contextualizer System  
+- [ ] Make Colab Script  
 
-
-
-**Original repo by  RAYTRAC3R or BFDIAnon!**
+**Original repo by RAYTRAC3R or BFDIAnon!**
