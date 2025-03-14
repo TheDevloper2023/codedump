@@ -2,6 +2,7 @@ import os
 import numpy as np
 import random
 import sys
+sys.path.append('../')
 import time
 import argparse
 import torch
@@ -19,7 +20,7 @@ from glob import glob
 from unidecode import unidecode
 import nltk # sentence spliting
 from nltk import sent_tokenize
-
+currentHiFiGanModel = None
 def get_mask_from_lengths(lengths, max_len=None):
     if not max_len:
         max_len = torch.max(lengths).long()
@@ -166,10 +167,17 @@ class T2S:
         
         # load WaveGlow
         self.wg_current = self.conf['waveglow']['default_model']
-        assert self.wg_current in self.conf['waveglow']['models'].keys(), "WaveGlow default model not found in config models"
-        waveglow_path = self.conf['waveglow']['models'][self.wg_current]['modelpath'] # get first available waveglow
-        waveglow_confpath = self.conf['waveglow']['models'][self.wg_current]['configpath']
-        self.waveglow, self.wg_denoiser, self.wg_train_sigma, self.wg_sp_id_lookup = self.load_waveglow(waveglow_path, waveglow_confpath)
+        if self.conf['waveglow']['models'][self.wg_current]['Type'] == "Hifigan":
+            print("Loading HiFi-GAN... ", end="")
+            currentHiFiGanModel = self.conf['waveglow']['models'][self.wg_current]['modelpath']
+        else:
+            print("Loading WaveGlow... ", end="") 
+            currentHiFiGanModel = ""
+            assert self.wg_current in self.conf['waveglow']['models'], "WaveGlow default model not found in config models"
+            # Load WaveGlow
+            waveglow_path = self.conf['waveglow']['models'][self.wg_current]['modelpath']
+            waveglow_confpath = self.conf['waveglow']['models'][self.wg_current]['configpath']
+            self.waveglow, self.wg_denoiser, self.wg_train_sigma, self.wg_sp_id_lookup = self.load_waveglow(waveglow_path, waveglow_confpath) 
         
         # load torchMoji
         if self.tt_hparams.torchMoji_linear: # if Tacotron includes a torchMoji layer
@@ -302,8 +310,12 @@ class T2S:
     
     
     def update_wg(self, waveglow_name):
-        self.waveglow, self.wg_denoiser, self.wg_train_sigma, self.wg_sp_id_lookup = self.load_waveglow(self.conf['waveglow']['models'][waveglow_name]['modelpath'], self.conf['waveglow']['models'][waveglow_name]['configpath'])
-        self.wg_current = waveglow_name
+        if self.conf['waveglow']['models'][waveglow_name]['Type'] == "Hifigan":
+            currentHiFiGanModel = self.conf['waveglow']['models'][waveglow_name]['modelpath']
+        else:
+            currentHiFiGanModel = ""
+            self.waveglow, self.wg_denoiser, self.wg_train_sigma, self.wg_sp_id_lookup = self.load_waveglow(self.conf['waveglow']['models'][waveglow_name]['modelpath'], self.conf['waveglow']['models'][waveglow_name]['configpath'])
+            self.wg_current = waveglow_name
     
     def load_tacotron2(self, tacotron_path):
         """Loads tacotron2,
@@ -350,7 +362,7 @@ class T2S:
         return validated_names
     
     
-    def infer(self, text, speaker_names, style_mode, textseg_mode, batch_mode, max_attempts, max_duration_s, batch_size, dyna_max_duration_s, use_arpabet, target_score, speaker_mode, cat_silence_s, textseg_len_target, gate_delay=4, gate_threshold=0.6, filename_prefix=None, status_updates=False, show_time_to_gen=True, end_mode='thresh', absolute_maximum_tries=4096, absolutely_required_score=-1e3):
+    def infer(self, text, speaker_names, style_mode, textseg_mode, batch_mode, max_attempts, max_duration_s, batch_size, dyna_max_duration_s, use_arpabet, target_score, speaker_mode, cat_silence_s, textseg_len_target, gate_delay=4, gate_threshold=0.6, filename_prefix=None, status_updates=False, show_time_to_gen=True, end_mode='max', absolute_maximum_tries=4096, absolutely_required_score=-1e3):
         """
         PARAMS:
         ...
@@ -395,10 +407,10 @@ class T2S:
             scores = []
             
             # Score Parameters
-            diagonality_weighting = 0.5 # 'pacing factor', a penalty for clips where the model pace changes often/rapidly. # this thing does NOT work well for Rarity.
-            max_focus_weighting = 1.0   # 'stuck factor', a penalty for clips that spend execisve time on the same letter.
-            min_focus_weighting = 1.0   # 'miniskip factor', a penalty for skipping/ignoring single letters in the input text.
-            avg_focus_weighting = 1.0   # 'skip factor', a penalty for skipping very large parts of the input text
+            diagonality_weighting = 1.5 # 'pacing factor', a penalty for clips where the model pace changes often/rapidly. # this thing does NOT work well for Rarity.
+            max_focus_weighting = 1.2   # 'stuck factor', a penalty for clips that spend execisve time on the same letter.
+            min_focus_weighting = 1.2   # 'miniskip factor', a penalty for skipping/ignoring single letters in the input text.
+            avg_focus_weighting = 1.2   # 'skip factor', a penalty for skipping very large parts of the input text
             
             # add a filename prefix to keep multiple requests seperate
             if not filename_prefix:
@@ -669,14 +681,30 @@ class T2S:
                 mel_batch_outputs_postnet = torch.nn.utils.rnn.pad_sequence(mel_batch_outputs_postnet, batch_first=True, padding_value=-11.6).transpose(1,2)[:,:,:max_length]
                 alignments_batch = torch.nn.utils.rnn.pad_sequence(alignments_batch, batch_first=True, padding_value=0)[:,:max_length,:]
                 
-                if status_updates:
-                    print("Running WaveGlow... ", end='')
-                # Run WaveGlow
-                audio_batch = self.waveglow.infer(mel_batch_outputs_postnet, speaker_ids=waveglow_speaker_ids, sigma=self.wg_train_sigma*0.95)
-                audio_denoised_batch = self.wg_denoiser(audio_batch, strength=0.0001).squeeze(1)
-                print("audio_denoised_batch.shape =", audio_denoised_batch.shape) # debug
-                if status_updates:
-                    print('Done')
+                # Correct the audio generation block to remove dependency on status_updates
+                if currentHiFiGanModel is not None:
+                    if status_updates:
+                        print("Running HiFi-GAN... ", end='')
+                    # HiFi-GAN processing (ensure audio_batch is assigned)
+                    os.system(f'python hifigan/inference_e2e.py --checkpoint_file {currentHiFiGanModel} --input_mels_dir "{mel_batch_outputs_postnet}" --output_dir "{self.conf["working_directory"]}"')
+                    output_files = [f for f in os.listdir(self.conf["working_directory"]) if f.endswith('.wav')]
+                    if not output_files:
+                        raise RuntimeError("HiFi-GAN did not generate any output files.")
+                    import torchaudio
+                    audio_paths = [os.path.join(self.conf["working_directory"], f) for f in output_files]
+                    audio_tensors = [torchaudio.load(path)[0] for path in audio_paths]
+                    if len(audio_tensors) == 1:
+                        audio_batch = audio_tensors[0]
+                    else:
+                        audio_batch = torch.cat(audio_tensors, dim=0)
+                else:
+                    if status_updates:
+                        print("Running WaveGlow... ", end='')
+                    # WaveGlow processing (ensure audio_batch is assigned)
+                    audio_batch = self.waveglow.infer(mel_batch_outputs_postnet, speaker_ids=waveglow_speaker_ids, sigma=self.wg_train_sigma*0.95)
+                    audio_denoised_batch = self.wg_denoiser(audio_batch, strength=0.0001).squeeze(1)
+                    if status_updates:
+                        print('Done')
                 
                 
                 # write audio files and any stats
@@ -697,7 +725,7 @@ class T2S:
                     filename = f"{filename_prefix}_{counter//300:04}_{counter:06}.wav"
                     save_path = os.path.join(self.conf['working_directory'], filename)
                     
-                    # add silence to clips (ignore last clip)
+                    # add silence to clips (ignore last clip)eee
                     if cat_silence_s:
                         cat_silence_samples = int(cat_silence_s*self.tt_hparams.sampling_rate)
                         audio = torch.nn.functional.pad(audio, (0, cat_silence_samples))
